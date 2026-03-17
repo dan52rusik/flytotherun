@@ -1,0 +1,59 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+[Uu]ser[Ss]ettings/
+
+# Asset import cache
+Assets/AssetStoreTools*
+
+# Addressables / player content
+Assets/StreamingAssets/aa.meta
+Assets/StreamingAssets/aa/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+
+# Unity autosave / crash / profiler artifacts
+sysinfo.txt
+*.stacktrace
+
+# OS cruft
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Test and coverage output
+TestResults/
+coverage/
+
+# Build artifacts
+*.apk
+*.aab
+*.unitypackage
+*.app
+*.exe
+*.dll
+*.zip
+
+# Keep important Unity text assets tracked
+!/[Aa]ssets/**/*.meta
+!/[Pp]ackages/**
+!/[Pp]roject[Ss]ettings/**
