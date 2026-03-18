@@ -20,6 +20,7 @@ public class SpawnManager : MonoBehaviour
     // Флаг, чтобы не спавнить фигуры повторно в одном кадре
     private bool isWaitingForSpawn = false;
     private const float spawnShapeScale = 0.6f;
+    private const float spawnFieldGap = 0.35f;
 
     private void Awake()
     {
@@ -130,6 +131,17 @@ public class SpawnManager : MonoBehaviour
             position.x += slotPosition.x - bounds.center.x;
             position.y += slotPosition.y - bounds.min.y;
             position.z = 0f;
+
+            if (GridManager.Instance != null)
+            {
+                float maxAllowedTop = GridManager.Instance.startPosition.y - spawnFieldGap;
+                float shiftedTop = bounds.max.y + (position.y - shape.transform.position.y);
+
+                if (shiftedTop > maxAllowedTop)
+                {
+                    position.y -= shiftedTop - maxAllowedTop;
+                }
+            }
 
             shape.transform.position = position;
         }

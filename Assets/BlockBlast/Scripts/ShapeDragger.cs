@@ -161,6 +161,8 @@ public class ShapeDragger : MonoBehaviour
         isDragging = true;
         currentlyDragged = this;
 
+        AudioManager.Instance?.PlayGrab(); // Звук взятия фигуры
+
         // Запоминаем смещение, чтобы фигура не прыгала к курсору
         dragOffset = transform.position - hitPoint;
         dragOffset.z = 0;
@@ -196,12 +198,14 @@ public class ShapeDragger : MonoBehaviour
         // Если туда можно встать — ставим!
         if (GridManager.Instance.CanPlaceShape(shape, gridPos))
         {
+            AudioManager.Instance?.PlayDrop(); // Звук успешной установки
             transform.localScale = Vector3.one;
             GridManager.Instance.PlaceShape(shape, gridPos);
             Destroy(gameObject); // Фигура теперь часть поля
         }
         else
         {
+            AudioManager.Instance?.PlayReturn(); // Звук возврата на базу
             // Если нельзя — возвращаем на место
             transform.position = startPos;
             transform.localScale = spawnScale;

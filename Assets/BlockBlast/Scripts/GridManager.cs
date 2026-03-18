@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 // using YG; // <- Заглушка: пространство имен плагина YandexGame SDK
+using TMPro; // Добавлено для работы с UI текстом
 
 public class GridManager : MonoBehaviour
 {
@@ -16,9 +17,14 @@ public class GridManager : MonoBehaviour
     public GameObject cellPrefab; // Префаб пустой ячейки поля
     public GameObject blockPrefab; // Префаб кубика (сегмента фигуры), который остается на поле
     public ParticleSystem clearEffectPrefab; // "Сочный" эффект уничтожения
+    [Header("UI")]
+    public TMP_Text scoreText; // Текст для отображения очков
 
     private bool[,] grid; // Состояние сетки: true = занято
     private GameObject[,] gridVisuals; // Ссылки на визуал кубиков (чтобы потом их удалять)
+    
+    // Пул для кубиков
+    private Queue<GameObject> blockPool = new Queue<GameObject>();
 
     private int score = 0;
 
@@ -28,6 +34,7 @@ public class GridManager : MonoBehaviour
         else Destroy(gameObject);
 
         InitializeGrid();
+        UpdateScoreUI();
     }
 
     private void InitializeGrid()
@@ -44,6 +51,24 @@ public class GridManager : MonoBehaviour
                 Instantiate(cellPrefab, GetWorldPosition(new Vector2Int(x, y)), Quaternion.identity, transform);
             }
         }
+    }
+
+    private GameObject GetBlockFromPool(Vector3 position)
+    {
+        if (blockPool.Count > 0)
+        {
+            GameObject block = blockPool.Dequeue();
+            block.transform.position = position;
+            block.SetActive(true);
+            return block;
+        }
+        return Instantiate(blockPrefab, position, Quaternion.identity, transform);
+    }
+
+    private void ReturnBlockToPool(GameObject block)
+    {
+        block.SetActive(false);
+        blockPool.Enqueue(block);
     }
 
     // Перевод координат сетки в мировые (для правильного спавна и отрисовки)
@@ -89,8 +114,8 @@ public class GridManager : MonoBehaviour
         {
             grid[pos.x, pos.y] = true;
             
-            // "Печатаем" кубики на поле
-            GameObject block = Instantiate(blockPrefab, GetWorldPosition(pos), Quaternion.identity, transform);
+            // "Печатаем" кубики на поле из пула
+            GameObject block = GetBlockFromPool(GetWorldPosition(pos));
             gridVisuals[pos.x, pos.y] = block;
         }
 
@@ -134,6 +159,9 @@ public class GridManager : MonoBehaviour
         {
             Debug.Log($"COMBO x{comboCount}!");
             score += 10 * comboCount * comboCount; // Формула бонусных очков
+            UpdateScoreUI(); // Обновляем UI
+            
+            AudioManager.Instance?.PlayClear(comboCount); // Вызов озвучки
             
             foreach (int x in linesToClearX) ClearColumn(x);
             foreach (int y in linesToClearY) ClearRow(y);
@@ -156,11 +184,23 @@ public class GridManager : MonoBehaviour
             {
                 // Спавним партиклы для "сочного" взрыва кубика
                 if (clearEffectPrefab != null)
-                    Instantiate(clearEffectPrefab, gridVisuals[x, y].transform.position, Quaternion.identity);
+                {
+                    ParticleSystem effect = Instantiate(clearEffectPrefab, gridVisuals[x, y].transform.position, Quaternion.identity);
+                    // Уничтожаем объект партиклов после завершения (предполагаем, что они длятся не более 2 секунд)
+                    Destroy(effect.gameObject, 2f); 
+                }
                     
-                Destroy(gridVisuals[x, y]);
+                ReturnBlockToPool(gridVisuals[x, y]); // Возвращаем кубик в пул, вместо Destroy
                 gridVisuals[x, y] = null;
             }
+        }
+    }
+
+    private void UpdateScoreUI()
+    {
+        if (scoreText != null)
+        {
+            scoreText.text = score.ToString();
         }
     }
 
@@ -168,13 +208,13 @@ public class GridManager : MonoBehaviour
     public void GameOver()
     {
         Debug.Log("GAME OVER! Ваш счет: " + score);
+        AudioManager.Instance?.PlayGameOver();
         
         // --- ЗАГЛУШКА Yandex Games SDK ---
-        // Если плагин импортирован, вызываем показ полноэкранной рекламы
-        // YandexGame.FullscreenShow();
-        
-        // После чего сохраняем рекорд в лидерборд Яндекса
-        // YandexGame.NewLeaderboardScores("BlockBlastLeaderboard", score);
+        // Раскомментируйте using YG; наверху
+        // И вызывайте показ полноэкранной рекламы и сохранение рекорда
+        // YG.YandexGame.FullscreenShow();
+        // YG.YandexGame.NewLeaderboardScores("BlockBlastLeaderboard", score);
         // ---------------------------------
     }
 }
