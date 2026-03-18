@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 // using YG; // <- Заглушка: пространство имен плагина YandexGame SDK
-using TMPro; // Добавлено для работы с UI текстом
+using UnityEngine.UI;
 
 public class GridManager : MonoBehaviour
 {
@@ -18,7 +18,7 @@ public class GridManager : MonoBehaviour
     public GameObject blockPrefab; // Префаб кубика (сегмента фигуры), который остается на поле
     public ParticleSystem clearEffectPrefab; // "Сочный" эффект уничтожения
     [Header("UI")]
-    public TMP_Text scoreText; // Текст для отображения очков
+    public Text scoreText; // Текст для отображения очков
 
     private bool[,] grid; // Состояние сетки: true = занято
     private GameObject[,] gridVisuals; // Ссылки на визуал кубиков (чтобы потом их удалять)
@@ -27,6 +27,9 @@ public class GridManager : MonoBehaviour
     private Queue<GameObject> blockPool = new Queue<GameObject>();
     private const float cellZ = 0.15f;
     private const float placedBlockZ = -0.15f;
+    private const int pointsPerPlacedCell = 5;
+    private const int pointsPerClearedLine = 120;
+    private const int pointsPerConsoleCycle = 250;
 
     private int score = 0;
 
@@ -37,8 +40,19 @@ public class GridManager : MonoBehaviour
 
         MatrixTheme.ApplyCameraTheme();
         MatrixConsoleUI.EnsureExists();
+        if (scoreText == null)
+        {
+            MatrixScoreUI scoreUI = MatrixScoreUI.EnsureExists();
+            scoreText = scoreUI.scoreValueText;
+        }
+        MatrixConsoleUI.onConsoleCycleCompleted += HandleConsoleCycleCompleted;
         InitializeGrid();
         UpdateScoreUI();
+    }
+
+    private void OnDestroy()
+    {
+        MatrixConsoleUI.onConsoleCycleCompleted -= HandleConsoleCycleCompleted;
     }
 
     private void InitializeGrid()
@@ -131,6 +145,7 @@ public class GridManager : MonoBehaviour
             gridVisuals[pos.x, pos.y] = block;
         }
 
+        AddScore(positions.Length * pointsPerPlacedCell);
         CheckAndClearLines();
     }
 
@@ -170,8 +185,7 @@ public class GridManager : MonoBehaviour
         if (comboCount > 0)
         {
             Debug.Log($"COMBO x{comboCount}!");
-            score += 10 * comboCount * comboCount; // Формула бонусных очков
-            UpdateScoreUI(); // Обновляем UI
+            AddScore(comboCount * pointsPerClearedLine);
             
             AudioManager.Instance?.PlayClear(comboCount); // Вызов озвучки
             
@@ -210,6 +224,20 @@ public class GridManager : MonoBehaviour
         }
     }
 
+    private void AddScore(int value)
+    {
+        if (value <= 0)
+            return;
+
+        score += value;
+        UpdateScoreUI();
+    }
+
+    private void HandleConsoleCycleCompleted(int cycleNumber)
+    {
+        AddScore(pointsPerConsoleCycle);
+    }
+
 
     public void GameOver()
     {
@@ -224,3 +252,4 @@ public class GridManager : MonoBehaviour
         // ---------------------------------
     }
 }
+
