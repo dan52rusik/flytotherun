@@ -36,6 +36,7 @@ public class GridManager : MonoBehaviour
         else Destroy(gameObject);
 
         MatrixTheme.ApplyCameraTheme();
+        MatrixConsoleUI.EnsureExists();
         InitializeGrid();
         UpdateScoreUI();
     }
@@ -193,17 +194,7 @@ public class GridManager : MonoBehaviour
             
             if (gridVisuals[x, y] != null)
             {
-                // Спавним партиклы для "сочного" взрыва кубика
-                if (clearEffectPrefab != null)
-                {
-                    ParticleSystem effect = Instantiate(clearEffectPrefab, gridVisuals[x, y].transform.position, Quaternion.identity);
-                    // Уничтожаем объект партиклов после завершения (предполагаем, что они длятся не более 2 секунд)
-                    Destroy(effect.gameObject, 2f); 
-                }
-                else
-                {
-                    MatrixBurstEffect.Spawn(gridVisuals[x, y].transform.position);
-                }
+                MatrixConsoleUI.EmitFromWorld(gridVisuals[x, y].transform.position);
                     
                 ReturnBlockToPool(gridVisuals[x, y]); // Возвращаем кубик в пул, вместо Destroy
                 gridVisuals[x, y] = null;
