@@ -18,6 +18,18 @@ public class MatrixScoreUI : MonoBehaviour
         return instance;
     }
 
+    private void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+        }
+        else if (instance != this)
+        {
+            Destroy(gameObject);
+        }
+    }
+
     private void Build()
     {
         DontDestroyOnLoad(gameObject);
@@ -40,62 +52,118 @@ public class MatrixScoreUI : MonoBehaviour
         rootRect.offsetMin = Vector2.zero;
         rootRect.offsetMax = Vector2.zero;
 
-        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (font == null)
-            font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        Font font = ResolveFont();
 
-        GameObject panel = new GameObject("ScorePanel", typeof(RectTransform), typeof(Image));
-        panel.transform.SetParent(transform, false);
-        RectTransform panelRect = panel.GetComponent<RectTransform>();
+        Image glow = CreateImage("Glow", transform, new Color(0.18f, 1f, 0.5f, 0.05f));
+        RectTransform glowRect = glow.rectTransform;
+        glowRect.anchorMin = new Vector2(0f, 1f);
+        glowRect.anchorMax = new Vector2(0f, 1f);
+        glowRect.pivot = new Vector2(0f, 1f);
+        glowRect.anchoredPosition = new Vector2(24f, -24f);
+        glowRect.sizeDelta = new Vector2(310f, 164f);
+
+        Image panel = CreateImage("Panel", transform, new Color(0.03f, 0.07f, 0.06f, 0.86f));
+        RectTransform panelRect = panel.rectTransform;
         panelRect.anchorMin = new Vector2(0f, 1f);
         panelRect.anchorMax = new Vector2(0f, 1f);
         panelRect.pivot = new Vector2(0f, 1f);
-        panelRect.anchoredPosition = new Vector2(28f, -28f);
-        panelRect.sizeDelta = new Vector2(300f, 150f);
-        Image panelImage = panel.GetComponent<Image>();
-        panelImage.color = new Color(0.03f, 0.09f, 0.05f, 0.52f);
+        panelRect.anchoredPosition = new Vector2(32f, -30f);
+        panelRect.sizeDelta = new Vector2(286f, 146f);
 
-        GameObject border = new GameObject("Border", typeof(RectTransform), typeof(Image));
-        border.transform.SetParent(panel.transform, false);
-        RectTransform borderRect = border.GetComponent<RectTransform>();
-        borderRect.anchorMin = Vector2.zero;
-        borderRect.anchorMax = Vector2.one;
-        borderRect.offsetMin = Vector2.zero;
-        borderRect.offsetMax = Vector2.zero;
-        border.GetComponent<Image>().color = new Color(0.36f, 1f, 0.56f, 0.16f);
+        Image border = CreateImage("Border", panel.transform, new Color(0.58f, 1f, 0.78f, 0.11f));
+        Stretch(border.rectTransform);
 
-        Text title = CreateText("Title", panel.transform, font, 24, FontStyle.Bold);
+        Image inner = CreateImage("Inner", panel.transform, new Color(0.05f, 0.12f, 0.1f, 0.42f));
+        RectTransform innerRect = inner.rectTransform;
+        innerRect.anchorMin = Vector2.zero;
+        innerRect.anchorMax = Vector2.one;
+        innerRect.offsetMin = new Vector2(10f, 10f);
+        innerRect.offsetMax = new Vector2(-10f, -10f);
+        inner.transform.SetAsFirstSibling();
+
+        Image topLine = CreateImage("TopLine", panel.transform, new Color(0.42f, 1f, 0.68f, 0.92f));
+        RectTransform topLineRect = topLine.rectTransform;
+        topLineRect.anchorMin = new Vector2(0f, 1f);
+        topLineRect.anchorMax = new Vector2(1f, 1f);
+        topLineRect.offsetMin = new Vector2(12f, -3f);
+        topLineRect.offsetMax = new Vector2(-12f, 0f);
+
+        Text tag = CreateText("Tag", panel.transform, font, 10, FontStyle.Bold);
+        tag.text = "LIVE SCORE";
+        tag.alignment = TextAnchor.MiddleLeft;
+        tag.color = new Color(0.58f, 1f, 0.72f, 0.7f);
+        RectTransform tagRect = tag.rectTransform;
+        tagRect.anchorMin = new Vector2(0f, 1f);
+        tagRect.anchorMax = new Vector2(1f, 1f);
+        tagRect.offsetMin = new Vector2(18f, -28f);
+        tagRect.offsetMax = new Vector2(-18f, -10f);
+
+        Text title = CreateText("Title", panel.transform, font, 22, FontStyle.Bold);
+        title.text = "SCORE";
         title.alignment = TextAnchor.MiddleLeft;
-        title.text = "> SCORE";
-        title.color = new Color(0.72f, 1f, 0.8f, 0.96f);
+        title.color = new Color(0.9f, 1f, 0.94f, 0.98f);
         RectTransform titleRect = title.rectTransform;
         titleRect.anchorMin = new Vector2(0f, 1f);
         titleRect.anchorMax = new Vector2(1f, 1f);
-        titleRect.pivot = new Vector2(0.5f, 1f);
-        titleRect.offsetMin = new Vector2(18f, -44f);
-        titleRect.offsetMax = new Vector2(-18f, -8f);
+        titleRect.offsetMin = new Vector2(18f, -54f);
+        titleRect.offsetMax = new Vector2(-18f, -26f);
 
-        Text sub = CreateText("Sub", panel.transform, font, 12, FontStyle.Normal);
-        sub.alignment = TextAnchor.MiddleLeft;
-        sub.text = "matrix score accumulator";
-        sub.color = new Color(0.38f, 0.95f, 0.54f, 0.72f);
-        RectTransform subRect = sub.rectTransform;
-        subRect.anchorMin = new Vector2(0f, 1f);
-        subRect.anchorMax = new Vector2(1f, 1f);
-        subRect.pivot = new Vector2(0.5f, 1f);
-        subRect.offsetMin = new Vector2(18f, -70f);
-        subRect.offsetMax = new Vector2(-18f, -42f);
+        Text subtitle = CreateText("Subtitle", panel.transform, font, 11, FontStyle.Normal);
+        subtitle.text = "current run";
+        subtitle.alignment = TextAnchor.MiddleLeft;
+        subtitle.color = new Color(0.44f, 0.92f, 0.6f, 0.62f);
+        RectTransform subtitleRect = subtitle.rectTransform;
+        subtitleRect.anchorMin = new Vector2(0f, 1f);
+        subtitleRect.anchorMax = new Vector2(1f, 1f);
+        subtitleRect.offsetMin = new Vector2(18f, -72f);
+        subtitleRect.offsetMax = new Vector2(-18f, -54f);
 
-        scoreValueText = CreateText("Value", panel.transform, font, 54, FontStyle.Bold);
-        scoreValueText.alignment = TextAnchor.MiddleLeft;
+        Image divider = CreateImage("Divider", panel.transform, new Color(0.35f, 1f, 0.58f, 0.1f));
+        RectTransform dividerRect = divider.rectTransform;
+        dividerRect.anchorMin = new Vector2(0f, 0.5f);
+        dividerRect.anchorMax = new Vector2(1f, 0.5f);
+        dividerRect.offsetMin = new Vector2(18f, 8f);
+        dividerRect.offsetMax = new Vector2(-18f, 10f);
+
+        scoreValueText = CreateText("Value", panel.transform, font, 46, FontStyle.Bold);
         scoreValueText.text = "0";
-        scoreValueText.color = new Color(0.56f, 1f, 0.66f, 1f);
+        scoreValueText.alignment = TextAnchor.MiddleLeft;
+        scoreValueText.color = new Color(0.62f, 1f, 0.72f, 1f);
         RectTransform valueRect = scoreValueText.rectTransform;
         valueRect.anchorMin = new Vector2(0f, 0f);
         valueRect.anchorMax = new Vector2(1f, 0f);
-        valueRect.pivot = new Vector2(0.5f, 0f);
-        valueRect.offsetMin = new Vector2(18f, 14f);
-        valueRect.offsetMax = new Vector2(-18f, 86f);
+        valueRect.offsetMin = new Vector2(18f, 18f);
+        valueRect.offsetMax = new Vector2(-18f, 84f);
+    }
+
+    private static Font ResolveFont()
+    {
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (font != null)
+            return font;
+
+        font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        if (font != null)
+            return font;
+
+        return Resources.GetBuiltinResource<Font>("Arial.ttf");
+    }
+
+    private static void Stretch(RectTransform rect)
+    {
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+    }
+
+    private static Image CreateImage(string name, Transform parent, Color color)
+    {
+        GameObject go = new GameObject(name, typeof(RectTransform), typeof(Image));
+        go.transform.SetParent(parent, false);
+        Image image = go.GetComponent<Image>();
+        image.color = color;
+        return image;
     }
 
     private static Text CreateText(string name, Transform parent, Font font, int fontSize, FontStyle fontStyle)
