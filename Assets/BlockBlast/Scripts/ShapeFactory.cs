@@ -20,14 +20,10 @@ public class ShapeFactory : MonoBehaviour
     [Tooltip("Случайный цвет будет выбран из этого массива для каждой новой фигуры")]
     public Color[] shapeColors = new Color[]
     {
-        new Color(0.95f, 0.26f, 0.21f, 1f), // Красный
-        new Color(0.30f, 0.69f, 0.31f, 1f), // Зелёный
-        new Color(0.13f, 0.59f, 0.95f, 1f), // Синий
-        new Color(1.00f, 0.76f, 0.03f, 1f), // Жёлтый
-        new Color(0.61f, 0.15f, 0.69f, 1f), // Фиолетовый
-        new Color(1.00f, 0.60f, 0.00f, 1f), // Оранжевый
-        new Color(0.00f, 0.74f, 0.83f, 1f), // Бирюзовый
-        new Color(0.91f, 0.12f, 0.39f, 1f), // Розовый
+        new Color(0.32f, 1f, 0.45f, 1f),
+        new Color(0.18f, 0.9f, 0.34f, 1f),
+        new Color(0.5f, 1f, 0.65f, 1f),
+        new Color(0.1f, 0.78f, 0.25f, 1f),
     };
 
     /// <summary>
@@ -144,6 +140,8 @@ public class ShapeFactory : MonoBehaviour
     {
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
+
+        shapeColors = MatrixTheme.GetShapePalette();
     }
 
     /// <summary>
@@ -239,6 +237,8 @@ public class ShapeFactory : MonoBehaviour
             renderer.material = shapeMat;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
+
+            MatrixTheme.ApplyToObject(block, MatrixSurfaceType.Block);
         }
 
         // Добавляем BoxCollider на корневой объект (для рейкаста при Drag-and-Drop)

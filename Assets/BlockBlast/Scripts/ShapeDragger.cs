@@ -239,6 +239,7 @@ public class ShapeDragger : MonoBehaviour
         for (int i = 0; i < ghostBlocks.Length; i++)
         {
             ghostBlocks[i] = Instantiate(previewBlockPrefab);
+            MatrixTheme.ApplyToObject(ghostBlocks[i], MatrixSurfaceType.Preview);
             ghostBlocks[i].SetActive(false);
         }
     }

@@ -25,6 +25,8 @@ public class GridManager : MonoBehaviour
     
     // Пул для кубиков
     private Queue<GameObject> blockPool = new Queue<GameObject>();
+    private const float cellZ = 0.15f;
+    private const float placedBlockZ = -0.15f;
 
     private int score = 0;
 
@@ -33,6 +35,7 @@ public class GridManager : MonoBehaviour
         if (Instance == null) Instance = this;
         else Destroy(gameObject);
 
+        MatrixTheme.ApplyCameraTheme();
         InitializeGrid();
         UpdateScoreUI();
     }
@@ -48,21 +51,29 @@ public class GridManager : MonoBehaviour
             for (int y = 0; y < rows; y++)
             {
                 grid[x, y] = false;
-                Instantiate(cellPrefab, GetWorldPosition(new Vector2Int(x, y)), Quaternion.identity, transform);
+                Vector3 cellPosition = GetWorldPosition(new Vector2Int(x, y));
+                cellPosition.z = cellZ;
+                GameObject cell = Instantiate(cellPrefab, cellPosition, Quaternion.identity, transform);
+                MatrixTheme.ApplyToObject(cell, MatrixSurfaceType.Cell);
             }
         }
     }
 
     private GameObject GetBlockFromPool(Vector3 position)
     {
+        position.z = placedBlockZ;
+
         if (blockPool.Count > 0)
         {
             GameObject block = blockPool.Dequeue();
             block.transform.position = position;
             block.SetActive(true);
+            MatrixTheme.ApplyToObject(block, MatrixSurfaceType.Block);
             return block;
         }
-        return Instantiate(blockPrefab, position, Quaternion.identity, transform);
+        GameObject createdBlock = Instantiate(blockPrefab, position, Quaternion.identity, transform);
+        MatrixTheme.ApplyToObject(createdBlock, MatrixSurfaceType.Block);
+        return createdBlock;
     }
 
     private void ReturnBlockToPool(GameObject block)
@@ -74,7 +85,7 @@ public class GridManager : MonoBehaviour
     // Перевод координат сетки в мировые (для правильного спавна и отрисовки)
     public Vector3 GetWorldPosition(Vector2Int gridPos)
     {
-        return new Vector3(startPosition.x + gridPos.x * cellSize, startPosition.y + gridPos.y * cellSize, 0);
+        return new Vector3(startPosition.x + gridPos.x * cellSize, startPosition.y + gridPos.y * cellSize, 0f);
     }
     
     // Перевод мировых координат курсора в ближайшие координаты сетки
@@ -188,6 +199,10 @@ public class GridManager : MonoBehaviour
                     ParticleSystem effect = Instantiate(clearEffectPrefab, gridVisuals[x, y].transform.position, Quaternion.identity);
                     // Уничтожаем объект партиклов после завершения (предполагаем, что они длятся не более 2 секунд)
                     Destroy(effect.gameObject, 2f); 
+                }
+                else
+                {
+                    MatrixBurstEffect.Spawn(gridVisuals[x, y].transform.position);
                 }
                     
                 ReturnBlockToPool(gridVisuals[x, y]); // Возвращаем кубик в пул, вместо Destroy
