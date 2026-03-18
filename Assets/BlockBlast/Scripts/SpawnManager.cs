@@ -1,65 +1,97 @@
-using UnityEngine;
 using System.Collections.Generic;
+using UnityEngine;
 
-/// <summary>
-/// Менеджер спавна фигур. Выдаёт игроку по 3 случайные фигуры.
-/// Новые фигуры появляются только когда все 3 предыдущие установлены.
-/// Теперь использует ShapeFactory для генерации фигур из шаблонов.
-/// </summary>
 public class SpawnManager : MonoBehaviour
 {
     public static SpawnManager Instance { get; private set; }
 
-    [Header("Настройки спавна")]
-    [Tooltip("Точки на экране внизу, где появляются фигуры (нужно 3 штуки)")]
+    [Header("Spawn")]
+    [Tooltip("Bottom scene points where playable shapes appear.")]
     public Transform[] spawnPoints;
 
-    // Список текущих активных фигур, которые доступны игроку
-    private List<Shape> currentShapes = new List<Shape>();
+    private readonly List<Shape> currentShapes = new List<Shape>();
+    private bool isWaitingForSpawn;
 
-    // Флаг, чтобы не спавнить фигуры повторно в одном кадре
-    private bool isWaitingForSpawn = false;
     private const float spawnShapeScale = 0.6f;
     private const float spawnFieldGap = 0.35f;
 
     private void Awake()
     {
         if (Instance == null) Instance = this;
-        else Destroy(gameObject);
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
     }
 
     private void Start()
     {
-        // Небольшая задержка перед первым спавном, чтобы ShapeFactory успел инициализироваться
         isWaitingForSpawn = true;
         Invoke(nameof(SpawnNewShapes), 0.1f);
     }
 
     private void Update()
     {
-        // Очищаем список от уничтоженных фигур (они удаляются при установке на поле)
         currentShapes.RemoveAll(shape => shape == null);
 
-        // Если все фигуры выставлены — спавним новую тройку
         if (currentShapes.Count == 0 && !isWaitingForSpawn)
         {
             isWaitingForSpawn = true;
-            // Маленькая задержка перед появлением новых фигур (фидбек для игрока)
             Invoke(nameof(SpawnNewShapes), 0.3f);
         }
     }
 
-    /// <summary>
-    /// Создаёт 3 новые случайные фигуры через ShapeFactory
-    /// </summary>
     private void SpawnNewShapes()
     {
         isWaitingForSpawn = false;
+        SpawnShapeSet(preferPlayableOnly: false, ensurePlayableOption: true);
+    }
 
+    public bool RespawnPlayableShapesForContinue()
+    {
+        CancelInvoke(nameof(SpawnNewShapes));
+        isWaitingForSpawn = false;
+        ClearCurrentShapes();
+        return SpawnShapeSet(preferPlayableOnly: true, ensurePlayableOption: true);
+    }
+
+    public void UnregisterShape(Shape shape)
+    {
+        if (shape == null)
+            return;
+
+        currentShapes.Remove(shape);
+    }
+
+    public void CheckCanPlay()
+    {
+        currentShapes.RemoveAll(shape => shape == null);
+
+        if (currentShapes.Count == 0)
+            return;
+
+        if (GridManager.Instance == null)
+            return;
+
+        foreach (Shape shape in currentShapes)
+        {
+            if (shape == null || shape.blockOffsets == null)
+                continue;
+
+            if (GridManager.Instance.HasAnyPlacement(shape.blockOffsets))
+                return;
+        }
+
+        GridManager.Instance.GameOver();
+    }
+
+    private bool SpawnShapeSet(bool preferPlayableOnly, bool ensurePlayableOption)
+    {
         if (spawnPoints == null || spawnPoints.Length == 0)
         {
             Debug.LogError("SpawnManager: spawnPoints is not configured.");
-            return;
+            return false;
         }
 
         if (ShapeFactory.Instance == null)
@@ -67,9 +99,10 @@ public class SpawnManager : MonoBehaviour
             Debug.LogError("SpawnManager: ShapeFactory.Instance is missing in the scene.");
             isWaitingForSpawn = true;
             Invoke(nameof(SpawnNewShapes), 0.3f);
-            return;
+            return false;
         }
 
+        List<ShapeTemplate> selectedTemplates = BuildTemplateSet(preferPlayableOnly, ensurePlayableOption, spawnPoints.Length);
         List<GameObject> spawnedShapes = new List<GameObject>();
 
         for (int i = 0; i < spawnPoints.Length; i++)
@@ -80,54 +113,100 @@ public class SpawnManager : MonoBehaviour
                 continue;
             }
 
-            // Создаём случайную фигуру через фабрику
-            GameObject spawnedShape = ShapeFactory.Instance.SpawnRandomShape(spawnPoints[i].position);
-
+            GameObject spawnedShape = ShapeFactory.Instance.SpawnShape(selectedTemplates[i], spawnPoints[i].position);
             if (spawnedShape == null)
             {
                 Debug.LogError($"SpawnManager: failed to spawn shape at point {i}.");
                 continue;
             }
 
-            // Масштабируем фигуру, чтобы она выглядела компактнее в области спавна
             spawnedShape.transform.localScale = Vector3.one * spawnShapeScale;
             spawnedShapes.Add(spawnedShape);
 
-            // Сохраняем ссылку
             Shape shapeComp = spawnedShape.GetComponent<Shape>();
             if (shapeComp != null)
-            {
                 currentShapes.Add(shapeComp);
-            }
         }
 
         LayoutSpawnedShapes(spawnedShapes);
-
-        // Проверяем, есть ли хотя бы один допустимый ход
         CheckCanPlay();
+        return currentShapes.Count > 0;
+    }
+
+    private List<ShapeTemplate> BuildTemplateSet(bool preferPlayableOnly, bool ensurePlayableOption, int count)
+    {
+        List<ShapeTemplate> templates = new List<ShapeTemplate>(count);
+        List<ShapeTemplate> playableTemplates = GetPlayableTemplates();
+        bool shouldInjectPlayable = ensurePlayableOption && playableTemplates.Count > 0;
+
+        for (int i = 0; i < count; i++)
+        {
+            ShapeTemplate selectedTemplate;
+
+            if (preferPlayableOnly && playableTemplates.Count > 0)
+            {
+                selectedTemplate = playableTemplates[Random.Range(0, playableTemplates.Count)];
+            }
+            else if (shouldInjectPlayable)
+            {
+                selectedTemplate = playableTemplates[Random.Range(0, playableTemplates.Count)];
+                shouldInjectPlayable = false;
+            }
+            else
+            {
+                selectedTemplate = ShapeFactory.Instance.GetRandomTemplate();
+            }
+
+            templates.Add(selectedTemplate);
+        }
+
+        return templates;
+    }
+
+    private List<ShapeTemplate> GetPlayableTemplates()
+    {
+        List<ShapeTemplate> playableTemplates = new List<ShapeTemplate>();
+        if (GridManager.Instance == null || ShapeFactory.Instance == null)
+            return playableTemplates;
+
+        IReadOnlyList<ShapeTemplate> allTemplates = ShapeFactory.Instance.GetTemplates();
+        for (int i = 0; i < allTemplates.Count; i++)
+        {
+            if (GridManager.Instance.HasAnyPlacement(allTemplates[i].offsets))
+                playableTemplates.Add(allTemplates[i]);
+        }
+
+        return playableTemplates;
+    }
+
+    private void ClearCurrentShapes()
+    {
+        currentShapes.RemoveAll(shape => shape == null);
+
+        for (int i = 0; i < currentShapes.Count; i++)
+        {
+            if (currentShapes[i] != null)
+                Destroy(currentShapes[i].gameObject);
+        }
+
+        currentShapes.Clear();
     }
 
     private void LayoutSpawnedShapes(List<GameObject> spawnedShapes)
     {
         if (spawnedShapes == null || spawnedShapes.Count == 0)
-        {
             return;
-        }
 
         for (int i = 0; i < spawnedShapes.Count; i++)
         {
             if (i >= spawnPoints.Length || spawnPoints[i] == null)
-            {
                 continue;
-            }
 
             GameObject shape = spawnedShapes[i];
             Bounds bounds = GetShapeBounds(shape);
             Vector3 slotPosition = spawnPoints[i].position;
             Vector3 position = shape.transform.position;
 
-            // Центрируем фигуру относительно слота по реальной ширине,
-            // а низ фигуры кладём на высоту spawn point.
             position.x += slotPosition.x - bounds.center.x;
             position.y += slotPosition.y - bounds.min.y;
             position.z = 0f;
@@ -136,11 +215,8 @@ public class SpawnManager : MonoBehaviour
             {
                 float maxAllowedTop = GridManager.Instance.startPosition.y - spawnFieldGap;
                 float shiftedTop = bounds.max.y + (position.y - shape.transform.position.y);
-
                 if (shiftedTop > maxAllowedTop)
-                {
                     position.y -= shiftedTop - maxAllowedTop;
-                }
             }
 
             shape.transform.position = position;
@@ -151,54 +227,12 @@ public class SpawnManager : MonoBehaviour
     {
         Renderer[] renderers = shapeObject.GetComponentsInChildren<Renderer>();
         if (renderers.Length == 0)
-        {
             return new Bounds(shapeObject.transform.position, Vector3.zero);
-        }
 
         Bounds bounds = renderers[0].bounds;
         for (int i = 1; i < renderers.Length; i++)
-        {
             bounds.Encapsulate(renderers[i].bounds);
-        }
 
         return bounds;
-    }
-
-    /// <summary>
-    /// Проверяет, можно ли поставить ХОТЯ БЫ ОДНУ из текущих фигур на поле
-    /// </summary>
-    public void CheckCanPlay()
-    {
-        // Очищаем null-ы перед проверкой
-        currentShapes.RemoveAll(shape => shape == null);
-
-        // Если фигур нет — не проверяем (скоро заспавнятся новые)
-        if (currentShapes.Count == 0) return;
-
-        bool canPlaceAny = false;
-
-        foreach (var shape in currentShapes)
-        {
-            if (shape == null) continue;
-
-            for (int x = 0; x < GridManager.Instance.columns; x++)
-            {
-                for (int y = 0; y < GridManager.Instance.rows; y++)
-                {
-                    if (GridManager.Instance.CanPlaceShape(shape, new Vector2Int(x, y)))
-                    {
-                        canPlaceAny = true;
-                        break;
-                    }
-                }
-                if (canPlaceAny) break;
-            }
-            if (canPlaceAny) break;
-        }
-
-        if (!canPlaceAny)
-        {
-            GridManager.Instance.GameOver();
-        }
     }
 }

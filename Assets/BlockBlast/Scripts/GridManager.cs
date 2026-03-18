@@ -1,58 +1,79 @@
 using System.Collections.Generic;
 using UnityEngine;
-// using YG; // <- Заглушка: пространство имен плагина YandexGame SDK
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class GridManager : MonoBehaviour
 {
     public static GridManager Instance { get; private set; }
 
-    [Header("Настройки сетки")]
+    [Header("Grid")]
     public int rows = 8;
     public int columns = 8;
-    public float cellSize = 1f; // Расстояние между центрами ячеек
-    public Vector2 startPosition; // Левый нижний угол сетки
+    public float cellSize = 1f;
+    public Vector2 startPosition;
 
-    [Header("Ссылки для визуала")]
-    public GameObject cellPrefab; // Префаб пустой ячейки поля
-    public GameObject blockPrefab; // Префаб кубика (сегмента фигуры), который остается на поле
-    public ParticleSystem clearEffectPrefab; // "Сочный" эффект уничтожения
+    [Header("Visuals")]
+    public GameObject cellPrefab;
+    public GameObject blockPrefab;
+    public ParticleSystem clearEffectPrefab;
+
     [Header("UI")]
-    public Text scoreText; // Текст для отображения очков
+    public Text scoreText;
 
-    private bool[,] grid; // Состояние сетки: true = занято
-    private GameObject[,] gridVisuals; // Ссылки на визуал кубиков (чтобы потом их удалять)
-    
-    // Пул для кубиков
-    private Queue<GameObject> blockPool = new Queue<GameObject>();
+    private bool[,] grid;
+    private GameObject[,] gridVisuals;
+    private readonly Queue<GameObject> blockPool = new Queue<GameObject>();
+
     private const float cellZ = 0.15f;
     private const float placedBlockZ = -0.15f;
     private const int pointsPerPlacedCell = 5;
     private const int pointsPerClearedLine = 120;
     private const int pointsPerConsoleCycle = 250;
 
-    private int score = 0;
+    private int score;
+    private bool hasUsedContinue;
+    private bool isGameOverFlowActive;
+    private bool isWaitingForRewardedContinue;
+
+    public bool IsInteractionLocked => isGameOverFlowActive || isWaitingForRewardedContinue;
 
     private void Awake()
     {
         if (Instance == null) Instance = this;
-        else Destroy(gameObject);
+        else
+        {
+            Destroy(gameObject);
+            return;
+        }
 
         MatrixTheme.ApplyCameraTheme();
         MatrixConsoleUI.EnsureExists();
+        MatrixGameOverUI.EnsureExists().Hide();
+
         if (scoreText == null)
         {
             MatrixScoreUI scoreUI = MatrixScoreUI.EnsureExists();
             scoreText = scoreUI.scoreValueText;
         }
+
         MatrixConsoleUI.onConsoleCycleCompleted += HandleConsoleCycleCompleted;
+#if RewardedAdv_yg
+        YG.YG2.onErrorRewardedAdv += HandleRewardedContinueError;
+#endif
         InitializeGrid();
         UpdateScoreUI();
     }
 
     private void OnDestroy()
     {
+        if (Instance == this)
+            Instance = null;
+
         MatrixConsoleUI.onConsoleCycleCompleted -= HandleConsoleCycleCompleted;
+#if RewardedAdv_yg
+        YG.YG2.onErrorRewardedAdv -= HandleRewardedContinueError;
+#endif
     }
 
     private void InitializeGrid()
@@ -60,12 +81,10 @@ public class GridManager : MonoBehaviour
         grid = new bool[columns, rows];
         gridVisuals = new GameObject[columns, rows];
 
-        // Создаем подложку поля
         for (int x = 0; x < columns; x++)
         {
             for (int y = 0; y < rows; y++)
             {
-                grid[x, y] = false;
                 Vector3 cellPosition = GetWorldPosition(new Vector2Int(x, y));
                 cellPosition.z = cellZ;
                 GameObject cell = Instantiate(cellPrefab, cellPosition, Quaternion.identity, transform);
@@ -86,6 +105,7 @@ public class GridManager : MonoBehaviour
             MatrixTheme.ApplyToObject(block, MatrixSurfaceType.Block);
             return block;
         }
+
         GameObject createdBlock = Instantiate(blockPrefab, position, Quaternion.identity, transform);
         MatrixTheme.ApplyToObject(createdBlock, MatrixSurfaceType.Block);
         return createdBlock;
@@ -97,13 +117,11 @@ public class GridManager : MonoBehaviour
         blockPool.Enqueue(block);
     }
 
-    // Перевод координат сетки в мировые (для правильного спавна и отрисовки)
     public Vector3 GetWorldPosition(Vector2Int gridPos)
     {
         return new Vector3(startPosition.x + gridPos.x * cellSize, startPosition.y + gridPos.y * cellSize, 0f);
     }
-    
-    // Перевод мировых координат курсора в ближайшие координаты сетки
+
     public Vector2Int GetGridPosition(Vector3 worldPos)
     {
         int x = Mathf.RoundToInt((worldPos.x - startPosition.x) / cellSize);
@@ -111,36 +129,55 @@ public class GridManager : MonoBehaviour
         return new Vector2Int(x, y);
     }
 
-    /// <summary>
-    /// Проверяет, свободна ли область на сетке для данной фигуры
-    /// </summary>
     public bool CanPlaceShape(Shape shape, Vector2Int originGridPos)
     {
-        Vector2Int[] positions = shape.GetGridPositions(originGridPos);
-        foreach (Vector2Int pos in positions)
+        if (shape == null || shape.blockOffsets == null)
+            return false;
+
+        return CanPlaceOffsets(shape.blockOffsets, originGridPos);
+    }
+
+    public bool CanPlaceOffsets(Vector2Int[] offsets, Vector2Int originGridPos)
+    {
+        if (offsets == null || offsets.Length == 0)
+            return false;
+
+        for (int i = 0; i < offsets.Length; i++)
         {
-            // Проверка: фигура выходит за границы сетки?
+            Vector2Int pos = originGridPos + offsets[i];
             if (pos.x < 0 || pos.x >= columns || pos.y < 0 || pos.y >= rows)
                 return false;
-            
-            // Проверка: клетка уже занята?
+
             if (grid[pos.x, pos.y])
                 return false;
         }
+
         return true;
     }
 
-    /// <summary>
-    /// Физически устанавливает фигуру на поле
-    /// </summary>
+    public bool HasAnyPlacement(Vector2Int[] offsets)
+    {
+        if (offsets == null || offsets.Length == 0)
+            return false;
+
+        for (int x = 0; x < columns; x++)
+        {
+            for (int y = 0; y < rows; y++)
+            {
+                if (CanPlaceOffsets(offsets, new Vector2Int(x, y)))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     public void PlaceShape(Shape shape, Vector2Int originGridPos)
     {
         Vector2Int[] positions = shape.GetGridPositions(originGridPos);
         foreach (Vector2Int pos in positions)
         {
             grid[pos.x, pos.y] = true;
-            
-            // "Печатаем" кубики на поле из пула
             GameObject block = GetBlockFromPool(GetWorldPosition(pos));
             gridVisuals[pos.x, pos.y] = block;
         }
@@ -149,79 +186,90 @@ public class GridManager : MonoBehaviour
         CheckAndClearLines();
     }
 
-    /// <summary>
-    /// Алгоритм проверки сгоревших линий (как строк, так и столбцов)
-    /// </summary>
     private void CheckAndClearLines()
     {
-        List<int> linesToClearX = new List<int>();
-        List<int> linesToClearY = new List<int>();
+        List<int> columnsToClear = new List<int>();
+        List<int> rowsToClear = new List<int>();
 
-        // Сканируем столбцы на заполненность
         for (int x = 0; x < columns; x++)
         {
             bool isFull = true;
             for (int y = 0; y < rows; y++)
             {
-                if (!grid[x, y]) { isFull = false; break; }
+                if (!grid[x, y])
+                {
+                    isFull = false;
+                    break;
+                }
             }
-            if (isFull) linesToClearX.Add(x);
+
+            if (isFull)
+                columnsToClear.Add(x);
         }
 
-        // Сканируем строки на заполненность
         for (int y = 0; y < rows; y++)
         {
             bool isFull = true;
             for (int x = 0; x < columns; x++)
             {
-                if (!grid[x, y]) { isFull = false; break; }
+                if (!grid[x, y])
+                {
+                    isFull = false;
+                    break;
+                }
             }
-            if (isFull) linesToClearY.Add(y);
+
+            if (isFull)
+                rowsToClear.Add(y);
         }
 
-        int comboCount = linesToClearX.Count + linesToClearY.Count;
-
-        // Если что-то собрали — удаляем и начисляем комбо
+        int comboCount = columnsToClear.Count + rowsToClear.Count;
         if (comboCount > 0)
         {
-            Debug.Log($"COMBO x{comboCount}!");
             AddScore(comboCount * pointsPerClearedLine);
-            
-            AudioManager.Instance?.PlayClear(comboCount); // Вызов озвучки
-            
-            foreach (int x in linesToClearX) ClearColumn(x);
-            foreach (int y in linesToClearY) ClearRow(y);
+            AudioManager.Instance?.PlayClear(comboCount);
+
+            foreach (int x in columnsToClear)
+                ClearColumn(x);
+
+            foreach (int y in rowsToClear)
+                ClearRow(y);
         }
 
-        // Вызываем проверку Game Over (может ли игрок сделать ход оставшимися фигурами)
-        SpawnManager.Instance.CheckCanPlay();
+        SpawnManager.Instance?.CheckCanPlay();
     }
 
-    private void ClearColumn(int x) { for (int y = 0; y < rows; y++) ClearCell(x, y); }
-    private void ClearRow(int y) { for (int x = 0; x < columns; x++) ClearCell(x, y); }
+    private void ClearColumn(int x)
+    {
+        for (int y = 0; y < rows; y++)
+            ClearCell(x, y);
+    }
+
+    private void ClearRow(int y)
+    {
+        for (int x = 0; x < columns; x++)
+            ClearCell(x, y);
+    }
 
     private void ClearCell(int x, int y)
     {
-        if (grid[x, y])
+        if (!grid[x, y])
+            return;
+
+        grid[x, y] = false;
+
+        if (gridVisuals[x, y] != null)
         {
-            grid[x, y] = false;
-            
-            if (gridVisuals[x, y] != null)
-            {
-                MatrixConsoleUI.EmitFromWorld(gridVisuals[x, y].transform.position);
-                    
-                ReturnBlockToPool(gridVisuals[x, y]); // Возвращаем кубик в пул, вместо Destroy
-                gridVisuals[x, y] = null;
-            }
+            MatrixConsoleUI.EmitFromWorld(gridVisuals[x, y].transform.position);
+            ReturnBlockToPool(gridVisuals[x, y]);
+            gridVisuals[x, y] = null;
         }
     }
 
     private void UpdateScoreUI()
     {
         if (scoreText != null)
-        {
             scoreText.text = score.ToString();
-        }
     }
 
     private void AddScore(int value)
@@ -238,18 +286,62 @@ public class GridManager : MonoBehaviour
         AddScore(pointsPerConsoleCycle);
     }
 
-
     public void GameOver()
     {
-        Debug.Log("GAME OVER! Ваш счет: " + score);
+        if (isGameOverFlowActive || isWaitingForRewardedContinue)
+            return;
+
+        Debug.Log("GAME OVER! Score: " + score);
         AudioManager.Instance?.PlayGameOver();
-        
-        // --- ЗАГЛУШКА Yandex Games SDK ---
-        // Раскомментируйте using YG; наверху
-        // И вызывайте показ полноэкранной рекламы и сохранение рекорда
-        // YG.YandexGame.FullscreenShow();
-        // YG.YandexGame.NewLeaderboardScores("BlockBlastLeaderboard", score);
-        // ---------------------------------
+
+        isGameOverFlowActive = true;
+
+        MatrixGameOverUI popup = MatrixGameOverUI.EnsureExists();
+        popup.Show(score, !hasUsedContinue, RequestRewardedContinue, RestartGame);
+    }
+
+    private void RequestRewardedContinue()
+    {
+        if (hasUsedContinue || isWaitingForRewardedContinue)
+            return;
+
+        isWaitingForRewardedContinue = true;
+        MatrixGameOverUI.EnsureExists().SetBusy(true, "opening reward stream...");
+
+#if RewardedAdv_yg
+        YG.YG2.RewardedAdvShow("continue_run", HandleRewardedContinueGranted);
+#else
+        HandleRewardedContinueGranted();
+#endif
+    }
+
+    private void HandleRewardedContinueGranted()
+    {
+        hasUsedContinue = true;
+        isWaitingForRewardedContinue = false;
+        isGameOverFlowActive = false;
+        MatrixGameOverUI.EnsureExists().Hide();
+
+        bool continueSpawned = SpawnManager.Instance != null && SpawnManager.Instance.RespawnPlayableShapesForContinue();
+        if (!continueSpawned)
+            RestartGame();
+    }
+
+    private void HandleRewardedContinueError()
+    {
+        if (!isWaitingForRewardedContinue)
+            return;
+
+        isWaitingForRewardedContinue = false;
+        isGameOverFlowActive = true;
+        MatrixGameOverUI.EnsureExists().SetBusy(false, "reward stream unavailable");
+    }
+
+    private void RestartGame()
+    {
+        isWaitingForRewardedContinue = false;
+        isGameOverFlowActive = false;
+        MatrixGameOverUI.EnsureExists().Hide();
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 }
-
